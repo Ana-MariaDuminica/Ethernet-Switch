@@ -1,0 +1,83 @@
+1 2 3
+/*Duminica Ana-Maria 332CC*/
+/*Tema 1 - Implementare Switch - RL*/
+
+Acest program simuleaza functionarea unui switch de retea, gestionand 
+redirectionarea pachetelor, invatarea adreselor MAC, manipularea vlan-urilor si 
+procesarea pachetelor bpdu pentru Spanning Tree Protocol.
+
+1. Procesul de comutare
+Atunci cand un cadru Ethernet este receptionat, switch-ul aplica un algoritm 
+pentru a asocia o adresa MAC sursa cu portul de pe care a sosit. Aceasta 
+asociere este inregistrata in tabela de comutare, astfel incat viitoarele cadre 
+cu aceeasi adresa de destinatie sa poata fi redirectionate corespunzator. 
+Daca o adresa MAC de destinatie nu exista in tabel, cadrul va fi difuzat pe 
+toate porturile disponibile, cu exceptia celui de intrare.
+
+Initializam tabela MAC ca un dictionar gol la inceputul programului. Cand un 
+cadru este primit, switch-ul inregistreaza adresa MAC sursa si portul de intrare 
+in tabela MAC, mac_table. Tabela permite switch-ului sa identifice portul corect 
+pentru a trimite cadrele viitoare catre acea adresa MAC, fiind esentiala pentru 
+redirectionarea unicast. Daca adresa MAC de destinatie este unicast si se 
+gaseste in tabela MAC, cadrul este transmis pe portul asociat, respectand 
+cerintele vlan. Daca adresa MAC de destinatie nu este in tabel, cadrul este 
+difuzat pe toate porturile, cu exceptia celui de intrare, daca acestea corespund 
+cerintelor vlan. Pentru adrese de broadcast, cadrul este transmis pe toate 
+porturile eligibile, cu exceptia portului de intrare.
+
+2. VLAN
+Pentru a configura vlan-urile, primul pas este sa citim configuratia vlan a 
+fiecarui switch cu ajutorul functiei read_vlan_config. Fisierul ce reprezinta 
+configuratia unui switch contine pe primul rand prioritatea switch-ului,
+prioritate ce va fi folosita la stp, si vlan id-urile pentru fiecare port, cele 
+trunk fiind marcate cu 'T'. 
+La receptionarea unui cadru, vlan id-ul este extras din antetul Ethernet 
+folosind functia parse_ethernet_header(). Daca cadrul nu este etichetat cu un 
+vlan, inseamna ca pachetul a fost transmis catre un port access, si se 
+utilizeaza vlan id-ul corespunzator din configuratia switch-ului. Cand un cadru 
+trebuie trimis mai departe, switch-ul verifica tipul portului de destinatie. 
+Daca portul este de tip trunk, atunci cadrul este etichetat cu vlan id si 
+trimis mai departe. Daca portul este de tip access, atunci verificam daca 
+trebuie sau nu sa scoatem vlan tag. Daca vlan id-ul sursa este -1, atunci 
+inseamna ca portul sursa este access si trimitem data, daca nu atunci scoatem 
+tag-ul. Switch-ul se asigura ca cadrele sunt transmise doar pe porturile care 
+corespund vlan id-ului efectiv sau pe porturile trunk care permit toate 
+vlan-urile. Cadrele de broadcast sunt transmise pe toate porturile compatibile 
+cu vlan-ul efectiv, cu exceptia portului de intrare. Se aplica aceeasi logica ca
+si pentru cadrele unicast, dar cu scopul de a atinge toate destinatiile posibile.
+
+3. STP
+STP este un protocol de retea folosit pentru a preveni aparitia buclelor in 
+topologia retelei. Prin utilizarea pachetelor bpdu, switch-urile comunica intre
+ele pentru a determina care porturi sa fie active si care blocate, prevenind 
+astfel buclele.
+Functia create_bpdu_packet este responsabila pentru crearea unui pachet bpdu. 
+Contine informatii critice despre topologia retelelor, precum id-ul bridge-ului 
+radacina, costul traseului si id-ul bridge-ului expeditor. Structura pachetului 
+include flags, setat pe 0 deoarece nu este folositor, root_bridge_id, path_cost,
+sender_bridge_id, iar port_id, message_age, max_age, hello_time si forward_delay 
+le-am pus, de asemenea, pe 0 deoarece nu se folosesc. Pachetul generat de aceasta 
+functie este trimis periodic de functia send_bpdu_every_sec pentru a mentine 
+topologia STP.
+Functia send_bpdu_every_sec gestioneaza trimiterea periodica de pachete bpdu pe 
+porturile trunk. Daca switch-ul curent este root bridge, acesta va trimite 
+pachete bpdu pe fiecare port trunk. Functia este rulata intr-un thread separat, 
+initializat in main, pentru trimiterea continua bpdu.
+Functia initialize_stp initializeaza starea stp a porturilor si seteaza bridge 
+id-ul curent ca bridge radacina. Porturile trunk sunt initializate in starea 
+blocking pentru a preveni buclele de retea. Functia este apelata in functia main 
+pentru a initializa stp in momentul pornirii programului. Pentru aceste doua 
+functii am urmat exact pasii mentionati in pseudocod in cerinta temei. 
+Functia receiving_bpdu este responsabila pentru procesarea cadrelor bpdu primite 
+si actualizarea starii stp a switch-ului. Cazul 1, daca un bpdu primit are un 
+root bridge id mai mic decat cel curent, switch-ul actualizeaza id-ul root 
+bridge-ului si recalculeaza costul traseului. Portul de pe care s-a trimis acest 
+pachet devine root_port, iar toate celelalte porturi sunt trecute pe blocking, 
+cu exceptia root port-ului care este trecut pe listening. Caz 2, daca bpdu-ul 
+are acelasi root bridge id, dar costul recalculat este mai mic, se actualizeaza 
+costul traseului. Porturile care nu sunt root si au un cost mai mare sunt 
+trecute in listening. Cazul 3, daca switch-ul detecteaza un bpdu trimis de el 
+insusi, portul respectiv este trecut in blocking pentru a preveni buclele. Daca 
+pachetele bpdu nu se incadreaza in aceste cazuri vor fi ignorate. Mentionez ca 
+si pentru aceasta functie am urmat instructiunile din pseudocodul prezentat in 
+cerinta temei.
